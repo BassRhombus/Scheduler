@@ -31,6 +31,7 @@ global.saveSchedulesToFile = () => saveSchedulesToFile(global.scheduledJobs);
 client.once(Events.ClientReady, async () => {
     try {
         await loadSchedulesFromFile(client, global.scheduledJobs);
+        console.log('Bot is Ready!');
         logger.info(`Ready! Logged in as ${client.user.tag}`, 'Startup');
     } catch (error) {
         logger.error('Error during startup', 'Startup', error);
