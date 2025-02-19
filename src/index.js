@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Client, Collection, Events, GatewayIntentBits, ActivityType } = require('discord.js');
 const { loadSchedulesFromFile, saveSchedulesToFile } = require('./utils/persistence');
+const { canManageSchedules } = require('./utils/permissions');
 const logger = require('../logger');
 
 const client = new Client({ 
@@ -64,12 +65,22 @@ client.on(Events.InteractionCreate, async interaction => {
     if (!command) return;
 
     try {
+        // Check permissions unless user is owner
+        if (!canManageSchedules(interaction)) {
+            await interaction.reply({
+                content: 'You do not have permission to use this command.',
+                ephemeral: true
+            });
+            return;
+        }
+
         logger.info(`Executing command: ${interaction.commandName}`, 'Command', {
             user: interaction.user.username,
             guild: interaction.guild.name,
             guildId: interaction.guild.id
         });
         await command.execute(interaction);
+        logger.info(`Command ${interaction.commandName} executed by ${interaction.user.username}`, 'Command');
     } catch (error) {
         logger.error(`Error executing command ${interaction.commandName}:`, 'Command', error);
         const errorMessage = 'There was an error executing this command!';

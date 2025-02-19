@@ -1,10 +1,11 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const logger = require('../../logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('list-schedules')
-        .setDescription('List all scheduled announcements'),
+        .setDescription('List all scheduled announcements')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
     async execute(interaction) {
         try {
@@ -25,8 +26,7 @@ module.exports = {
                     role: schedule.role,
                     mentionType: schedule.mentionType,
                     mentionId: schedule.mentionId
-                }))
-            );
+                })));
 
             const schedulePromises = schedules.map(async ([id, schedule]) => {
                 // Time information

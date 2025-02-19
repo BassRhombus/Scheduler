@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const schedule = require('node-schedule');
 const logger = require('../../logger');
 
@@ -17,6 +17,7 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('schedule')
         .setDescription('Schedule a recurring notification')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)  // Default permission requirement
         .addStringOption(option =>
             option.setName('type')
                 .setDescription('Type of schedule')

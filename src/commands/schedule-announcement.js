@@ -1,4 +1,8 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { 
+    SlashCommandBuilder, 
+    EmbedBuilder, 
+    PermissionFlagsBits 
+} = require('discord.js');
 const schedule = require('node-schedule');
 const logger = require('../../logger');
 
@@ -16,6 +20,7 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('schedule-announcement')
         .setDescription('Schedule an announcement')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)  // Default permission requirement
         // Required options first
         .addStringOption(option =>
             option.setName('type')
