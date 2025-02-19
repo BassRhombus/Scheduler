@@ -5,6 +5,55 @@ const logger = require('../../logger');
 
 const SCHEDULES_FILE = 'schedules.json';
 
+function serializeRule(rule) {
+    if (typeof rule === 'string') {
+        return { type: 'cron', value: rule };
+    }
+    // Handle RecurrenceRule objects
+    if (rule instanceof schedule.RecurrenceRule) {
+        return {
+            type: 'recurrence',
+            value: {
+                month: rule.month,
+                date: rule.date,
+                dayOfWeek: rule.dayOfWeek,
+                hour: rule.hour,
+                minute: rule.minute,
+                second: rule.second || 0
+            }
+        };
+    }
+    return null;
+}
+
+function deserializeRule(ruleData) {
+    if (!ruleData) return null;
+
+    if (ruleData.type === 'cron') {
+        return ruleData.value;
+    }
+    
+    if (ruleData.type === 'recurrence') {
+        const rule = new schedule.RecurrenceRule();
+        const value = ruleData.value;
+        
+        if (value.month !== undefined) rule.month = value.month;
+        if (value.date !== undefined) {
+            rule.date = (value.date instanceof Array) ? 
+                new schedule.Range(value.date[0], value.date[1]) : 
+                value.date;
+        }
+        if (value.dayOfWeek !== undefined) rule.dayOfWeek = value.dayOfWeek;
+        if (value.hour !== undefined) rule.hour = value.hour;
+        if (value.minute !== undefined) rule.minute = value.minute;
+        if (value.second !== undefined) rule.second = value.second;
+        
+        return rule;
+    }
+
+    return null;
+}
+
 function saveSchedulesToFile(scheduledJobs) {
     try {
         const data = Array.from(scheduledJobs.entries()).map(([id, schedule]) => ({
@@ -15,7 +64,7 @@ function saveSchedulesToFile(scheduledJobs) {
             time: schedule.time,
             day: schedule.day,
             channelId: schedule.channelId,
-            rule: schedule.rule,
+            rule: serializeRule(schedule.rule),
             title: schedule.title,
             content: schedule.content,
             color: schedule.color,
@@ -26,7 +75,8 @@ function saveSchedulesToFile(scheduledJobs) {
             frequency: schedule.frequency,
             isAnnouncement: schedule.isAnnouncement,
             mentionType: schedule.mentionType,
-            mentionId: schedule.mentionId
+            mentionId: schedule.mentionId,
+            creator: schedule.creator
         }));
 
         fs.writeFileSync(SCHEDULES_FILE, JSON.stringify(data, null, 2));
@@ -38,14 +88,12 @@ function saveSchedulesToFile(scheduledJobs) {
 
 async function loadSchedulesFromFile(client, scheduledJobs) {
     try {
-        // Check if file exists
         if (!fs.existsSync(SCHEDULES_FILE)) {
             logger.info('No schedules file found, creating empty file', 'Persistence');
             fs.writeFileSync(SCHEDULES_FILE, '[]');
             return;
         }
 
-        // Read and parse file with error handling
         let data;
         try {
             const fileContent = fs.readFileSync(SCHEDULES_FILE, 'utf8');
@@ -71,10 +119,14 @@ async function loadSchedulesFromFile(client, scheduledJobs) {
         }
         scheduledJobs.clear();
 
-        // Load each schedule
         for (const scheduleData of data) {
             try {
-                const { id, rule } = scheduleData;
+                const { id } = scheduleData;
+                const rule = deserializeRule(scheduleData.rule);
+
+                if (!rule) {
+                    throw new Error(`Invalid or missing rule for schedule ${id}`);
+                }
 
                 const sendMessage = async () => {
                     try {
@@ -127,12 +179,13 @@ async function loadSchedulesFromFile(client, scheduledJobs) {
                 const job = schedule.scheduleJob(rule, sendMessage);
                 
                 if (!job) {
-                    throw new Error(`Invalid schedule rule: ${rule}`);
+                    throw new Error(`Failed to create job with rule: ${JSON.stringify(rule)}`);
                 }
 
                 scheduledJobs.set(id, {
                     ...scheduleData,
-                    job
+                    job,
+                    rule
                 });
 
                 logger.info(`Successfully loaded schedule: ${id}`, 'Persistence');
