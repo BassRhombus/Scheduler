@@ -3,6 +3,8 @@ const schedule = require('node-schedule');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const logger = require('../../logger');
 
+const SCHEDULES_FILE = 'schedules.json';
+
 function saveSchedulesToFile(scheduledJobs) {
     try {
         const data = Array.from(scheduledJobs.entries()).map(([id, schedule]) => ({
@@ -22,10 +24,12 @@ function saveSchedulesToFile(scheduledJobs) {
             buttonLabel: schedule.buttonLabel,
             buttonUrl: schedule.buttonUrl,
             frequency: schedule.frequency,
-            isAnnouncement: schedule.isAnnouncement
+            isAnnouncement: schedule.isAnnouncement,
+            mentionType: schedule.mentionType,
+            mentionId: schedule.mentionId
         }));
 
-        fs.writeFileSync('schedules.json', JSON.stringify(data, null, 2));
+        fs.writeFileSync(SCHEDULES_FILE, JSON.stringify(data, null, 2));
         logger.info(`Saved ${data.length} schedules to file`, 'Persistence');
     } catch (error) {
         logger.error('Failed to save schedules to file', 'Persistence', error);
@@ -34,12 +38,29 @@ function saveSchedulesToFile(scheduledJobs) {
 
 async function loadSchedulesFromFile(client, scheduledJobs) {
     try {
-        if (!fs.existsSync('schedules.json')) {
-            logger.info('No schedules file found', 'Persistence');
+        // Check if file exists
+        if (!fs.existsSync(SCHEDULES_FILE)) {
+            logger.info('No schedules file found, creating empty file', 'Persistence');
+            fs.writeFileSync(SCHEDULES_FILE, '[]');
             return;
         }
 
-        const data = JSON.parse(fs.readFileSync('schedules.json'));
+        // Read and parse file with error handling
+        let data;
+        try {
+            const fileContent = fs.readFileSync(SCHEDULES_FILE, 'utf8');
+            if (!fileContent.trim()) {
+                logger.info('Schedules file is empty, initializing with empty array', 'Persistence');
+                fs.writeFileSync(SCHEDULES_FILE, '[]');
+                return;
+            }
+            data = JSON.parse(fileContent);
+        } catch (parseError) {
+            logger.error('Failed to parse schedules file, creating new file', 'Persistence', parseError);
+            fs.writeFileSync(SCHEDULES_FILE, '[]');
+            return;
+        }
+
         logger.info(`Loading ${data.length} schedules from file`, 'Persistence');
 
         // Clear existing jobs
@@ -50,6 +71,7 @@ async function loadSchedulesFromFile(client, scheduledJobs) {
         }
         scheduledJobs.clear();
 
+        // Load each schedule
         for (const scheduleData of data) {
             try {
                 const { id, rule } = scheduleData;
@@ -82,13 +104,18 @@ async function loadSchedulesFromFile(client, scheduledJobs) {
                                 components.push(row);
                             }
 
+                            const mentionStr = scheduleData.mentionType === 'role' ? 
+                                `<@&${scheduleData.mentionId || scheduleData.roleId}>` : 
+                                `<@${scheduleData.mentionId}>`;
+
                             await channel.send({
-                                content: `<@&${scheduleData.roleId}>`,
+                                content: mentionStr,
                                 embeds: [embed],
                                 components: components.length > 0 ? components : undefined
                             });
                         } else {
-                            await channel.send(`<@&${scheduleData.roleId}> ${scheduleData.message}`);
+                            const mentionStr = `<@&${scheduleData.roleId}>`;
+                            await channel.send(`${mentionStr} ${scheduleData.message}`);
                         }
 
                         logger.info(`Executed scheduled message for ${id}`, 'Schedule');
@@ -105,20 +132,16 @@ async function loadSchedulesFromFile(client, scheduledJobs) {
 
                 scheduledJobs.set(id, {
                     ...scheduleData,
-                    job,
-                    nextInvocation: job.nextInvocation()
+                    job
                 });
 
-                logger.info(`Successfully loaded schedule: ${id}`, 'Persistence', {
-                    type: scheduleData.type,
-                    nextRun: job.nextInvocation()
-                });
+                logger.info(`Successfully loaded schedule: ${id}`, 'Persistence');
             } catch (error) {
                 logger.error(`Failed to load schedule ${scheduleData.id}`, 'Persistence', error);
             }
         }
     } catch (error) {
-        logger.error('Failed to load schedules from file', 'Persistence', error);
+        logger.error('Failed to load schedules', 'Persistence', error);
     }
 }
 

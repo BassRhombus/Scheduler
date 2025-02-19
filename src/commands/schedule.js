@@ -71,7 +71,7 @@ module.exports = {
             logger.warn(`Invalid time format provided: ${time}`, 'Schedule');
             await interaction.reply({ 
                 content: 'Invalid time format! Please use HH:MM (24-hour format)',
-                flags: { ephemeral: true }
+                ephemeral: true
             });
             return;
         }
@@ -202,7 +202,7 @@ module.exports = {
 
             await interaction.reply({ 
                 content: scheduleDetails,
-                flags: { ephemeral: true }
+                ephemeral: true
             });
 
         } catch (error) {
@@ -218,7 +218,7 @@ module.exports = {
 
             await interaction.reply({ 
                 content: errorMessage,
-                flags: { ephemeral: true }
+                ephemeral: true
             });
         }
     },

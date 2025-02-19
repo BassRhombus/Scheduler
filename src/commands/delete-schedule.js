@@ -1,59 +1,83 @@
-const { SlashCommandBuilder } = require('discord.js');
-const path = require('path');
-const logger = require(path.join(__dirname, '../../logger'));
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const logger = require('../../logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('delete-schedule')
-        .setDescription('Delete a scheduled notification')
-        .addStringOption(option =>
+        .setDescription('Delete a scheduled announcement')
+        .addStringOption(option => 
             option.setName('id')
-                .setDescription('ID of the schedule to delete')
-                .setRequired(true)),
+                .setDescription('The ID of the schedule to delete')
+                .setRequired(true)
+                .setAutocomplete(true)), // Add autocomplete for easier ID selection
+
+    async autocomplete(interaction) {
+        // Get all schedules for this guild
+        const schedules = Array.from(global.scheduledJobs.entries())
+            .filter(([jobId]) => jobId.startsWith(interaction.guildId));
+
+        // Create choices from schedules
+        const choices = schedules.map(([id, schedule]) => ({
+            name: `${schedule.title} (${schedule.time})`,
+            value: id
+        }));
+
+        const focused = interaction.options.getFocused();
+        const filtered = choices.filter(choice => 
+            choice.name.toLowerCase().includes(focused.toLowerCase()));
+
+        await interaction.respond(
+            filtered.slice(0, 25) // Discord has a 25-choice limit
+        );
+    },
 
     async execute(interaction) {
-        const jobId = interaction.options.getString('id');
-
-        logger.info(`Attempting to delete schedule: ${jobId}`, 'Schedule');
-
         try {
-            if (!global.scheduledJobs.has(jobId)) {
-                logger.warn(`Schedule not found: ${jobId}`, 'Schedule');
-                await interaction.reply({
-                    content: 'Schedule not found.',
-                    ephemeral: true
-                });
-                return;
-            }
+            const scheduleId = interaction.options.getString('id');
 
-            const scheduleData = global.scheduledJobs.get(jobId);
-
-            // Check if the job object exists and has a cancel method
-            if (scheduleData && scheduleData.job && typeof scheduleData.job.cancel === 'function') {
-                scheduleData.job.cancel();
-                global.scheduledJobs.delete(jobId);
-                global.saveSchedulesToFile();
-
-                logger.info(`Successfully deleted schedule: ${jobId}`, 'Schedule');
-                await interaction.reply({
-                    content: 'Schedule deleted successfully.',
-                    ephemeral: true
-                });
-            } else {
-                // If job object is invalid, clean up the entry anyway
-                global.scheduledJobs.delete(jobId);
-                global.saveSchedulesToFile();
-
-                logger.warn(`Invalid job object for schedule: ${jobId}, cleaned up entry`, 'Schedule');
-                await interaction.reply({
-                    content: 'Schedule entry removed (invalid job state).',
+            // Check if schedule exists and belongs to this guild
+            if (!scheduleId.startsWith(interaction.guildId)) {
+                return await interaction.reply({
+                    content: 'This schedule ID is not valid for this server.',
                     ephemeral: true
                 });
             }
-        } catch (error) {
-            logger.error(`Failed to delete schedule: ${jobId}`, 'Schedule', error);
+
+            const schedule = global.scheduledJobs.get(scheduleId);
+            if (!schedule) {
+                return await interaction.reply({
+                    content: 'Schedule not found. Use /list-schedules to see all valid IDs.',
+                    ephemeral: true
+                });
+            }
+
+            // Cancel the scheduled job
+            if (schedule.job) {
+                schedule.job.cancel();
+            }
+
+            // Remove from our Map
+            global.scheduledJobs.delete(scheduleId);
+
+            // Save changes to file
+            global.saveSchedulesToFile();
+
+            const embed = new EmbedBuilder()
+                .setTitle('✅ Schedule Deleted')
+                .setDescription(`Successfully deleted schedule:\n**${schedule.title}**`)
+                .setColor('#00FF00');
+
             await interaction.reply({
-                content: 'Failed to delete schedule. Please try again or contact an administrator.',
+                embeds: [embed],
+                ephemeral: true
+            });
+
+            logger.info(`Deleted schedule ${scheduleId}`, 'DeleteSchedule');
+
+        } catch (error) {
+            logger.error('Failed to delete schedule', 'DeleteSchedule', error);
+            await interaction.reply({
+                content: 'Failed to delete schedule. Please try again.',
                 ephemeral: true
             });
         }

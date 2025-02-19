@@ -1,7 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const schedule = require('node-schedule');
-const path = require('path');
-const logger = require(path.join(__dirname, '../../logger'));
+const logger = require('../../logger');
 
 const DAYS_OF_WEEK = {
     'sunday': 0,
@@ -16,304 +15,243 @@ const DAYS_OF_WEEK = {
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('schedule-announcement')
-        .setDescription('Schedule a recurring announcement with rich formatting')
+        .setDescription('Schedule an announcement')
         // Required options first
         .addStringOption(option =>
             option.setName('type')
-                .setDescription('Type of schedule')
+                .setDescription('When to send this announcement')
                 .setRequired(true)
                 .addChoices(
+                    { name: 'One-time', value: 'one-time' },
                     { name: 'Daily', value: 'daily' },
                     { name: 'Weekly', value: 'weekly' },
                     { name: 'Biweekly', value: 'biweekly' },
                     { name: 'Monthly', value: 'monthly' },
                     { name: 'Custom', value: 'custom' }
                 ))
-        .addRoleOption(option =>
-            option.setName('role')
-                .setDescription('Role to ping')
-                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('mention_type')
+                .setDescription('Who to mention')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'Role', value: 'role' },
+                    { name: 'User', value: 'user' }
+                ))
         .addStringOption(option =>
             option.setName('title')
-                .setDescription('Title for the announcement')
+                .setDescription('Announcement title')
                 .setRequired(true))
         .addStringOption(option =>
-            option.setName('content')
-                .setDescription('Main announcement content (supports markdown)')
+            option.setName('message')
+                .setDescription('Announcement message')
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('time')
-                .setDescription('Time in HH:MM format (24h)')
+                .setDescription('Time (HH:MM in 24h format)')
                 .setRequired(true))
-        // Optional options after all required ones
+        // Non-required options after
+        .addRoleOption(option =>
+            option.setName('role')
+                .setDescription('Role to ping')
+                .setRequired(false))
+        .addUserOption(option =>
+            option.setName('user')
+                .setDescription('User to ping')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('date')
+                .setDescription('Date for one-time (MM-DD-YY)')
+                .setRequired(false))
         .addStringOption(option =>
             option.setName('day')
-                .setDescription('Day of week/month (e.g., monday or 1-31)')
+                .setDescription('Day for weekly/monthly (monday, 1-31)')
                 .setRequired(false))
         .addStringOption(option =>
-            option.setName('color')
-                .setDescription('Color for the embed (hex code, e.g., #FF0000)')
-                .setRequired(false))
-        .addStringOption(option =>
-            option.setName('image')
-                .setDescription('URL of an image to include')
-                .setRequired(false))
-        .addStringOption(option =>
-            option.setName('footer')
-                .setDescription('Footer text')
-                .setRequired(false))
-        .addStringOption(option =>
-            option.setName('frequency')
-                .setDescription('For daily schedules: every X days')
-                .setRequired(false))
-        .addStringOption(option =>
-            option.setName('button_label')
-                .setDescription('Add a button with this label')
-                .setRequired(false))
-        .addStringOption(option =>
-            option.setName('button_url')
-                .setDescription('URL for the button')
+            option.setName('cron')
+                .setDescription('Cron expression for custom schedule')
                 .setRequired(false)),
 
     async execute(interaction) {
-        // Get all options
-        const type = interaction.options.getString('type');
-        const role = interaction.options.getRole('role');
-        const title = interaction.options.getString('title');
-        const content = interaction.options.getString('content');
-        const color = interaction.options.getString('color') || '#5865F2';
-        const image = interaction.options.getString('image');
-        const footer = interaction.options.getString('footer');
-        const time = interaction.options.getString('time');
-        const day = interaction.options.getString('day');
-        const frequency = interaction.options.getString('frequency');
-        const buttonLabel = interaction.options.getString('button_label');
-        const buttonUrl = interaction.options.getString('button_url');
-
-        // Validate time format
-        const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
-        if (!timeRegex.test(time)) {
-            logger.warn(`Invalid time format provided: ${time}`, 'ScheduleAnnouncement');
-            await interaction.reply({ 
-                content: 'Invalid time format! Please use HH:MM (24-hour format)',
-                ephemeral: true 
-            });
-            return;
-        }
-
-        const [hours, minutes] = time.split(':').map(Number);
-        
-        // Validate color format
-        const colorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
-        if (color && !colorRegex.test(color)) {
-            await interaction.reply({ 
-                content: 'Invalid color format! Please use hex code (e.g., #FF0000)',
-                ephemeral: true 
-            });
-            return;
-        }
-
-        // Create schedule rule
-        let rule;
         try {
+            const type = interaction.options.getString('type');
+            const mentionType = interaction.options.getString('mention_type');
+            const role = interaction.options.getRole('role');
+            const user = interaction.options.getUser('user');
+            const title = interaction.options.getString('title');
+            const message = interaction.options.getString('message');
+            const time = interaction.options.getString('time');
+            const date = interaction.options.getString('date');
+            const day = interaction.options.getString('day')?.toLowerCase();
+            const cron = interaction.options.getString('cron');
+
+            // Validate time format
+            if (!/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
+                return await interaction.reply({ 
+                    content: 'Please use HH:MM format (e.g., 15:30)',
+                    ephemeral: true 
+                });
+            }
+
+            // Validate mention options
+            if (mentionType === 'role' && !role) {
+                throw new Error('Please select a role to ping');
+            }
+            if (mentionType === 'user' && !user) {
+                throw new Error('Please select a user to ping');
+            }
+
+            // Get the mention string
+            const mention = mentionType === 'role' ? role : user;
+
+            const [hours, minutes] = time.split(':').map(Number);
+            let rule;
+            let timestamp;
+            let scheduleInfo;
+
+            // Validate and create schedule based on type
             switch(type) {
-                case 'daily':
-                    const dailyFrequency = frequency ? parseInt(frequency) : 1;
-                    if (isNaN(dailyFrequency) || dailyFrequency < 1) {
-                        throw new Error('Invalid daily frequency');
+                case 'one-time':
+                    if (!date || !/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])-(\d{2})$/.test(date)) {
+                        throw new Error('Please provide date in MM-DD-YY format');
                     }
-                    rule = dailyFrequency === 1 
-                        ? `0 ${minutes} ${hours} * * *`
-                        : `0 ${minutes} ${hours} */${dailyFrequency} * *`;
+                    const [month, dayOfMonth, year] = date.split('-').map(Number);
+                    timestamp = new Date(2000 + year, month - 1, dayOfMonth, hours, minutes).getTime();
+                    if (timestamp <= Date.now()) {
+                        throw new Error('The scheduled date must be in the future');
+                    }
+                    rule = new schedule.RecurrenceRule();
+                    rule.year = 2000 + year;
+                    rule.month = month - 1;
+                    rule.date = dayOfMonth;
+                    rule.hour = hours;
+                    rule.minute = minutes;
+                    scheduleInfo = `<t:${Math.floor(timestamp/1000)}:F>`;
+                    break;
+
+                case 'daily':
+                    rule = new schedule.RecurrenceRule();
+                    rule.hour = hours;
+                    rule.minute = minutes;
+                    scheduleInfo = `every day at ${time}`;
                     break;
 
                 case 'weekly':
-                    let weekDay = 1; // Default to Monday
-                    if (day) {
-                        if (isNaN(day)) {
-                            weekDay = DAYS_OF_WEEK[day.toLowerCase()];
-                            if (weekDay === undefined) {
-                                throw new Error('Invalid day name');
-                            }
-                        } else {
-                            weekDay = parseInt(day);
-                            if (weekDay < 0 || weekDay > 6) {
-                                throw new Error('Invalid day number');
-                            }
-                        }
+                    if (!day || !DAYS_OF_WEEK.hasOwnProperty(day)) {
+                        throw new Error('Please specify a valid day of the week');
                     }
-                    rule = `0 ${minutes} ${hours} * * ${weekDay}`;
+                    rule = new schedule.RecurrenceRule();
+                    rule.dayOfWeek = DAYS_OF_WEEK[day];
+                    rule.hour = hours;
+                    rule.minute = minutes;
+                    scheduleInfo = `every ${day} at ${time}`;
                     break;
 
                 case 'biweekly':
-                    let biWeekDay = 1;
-                    if (day) {
-                        if (isNaN(day)) {
-                            biWeekDay = DAYS_OF_WEEK[day.toLowerCase()];
-                            if (biWeekDay === undefined) {
-                                throw new Error('Invalid day name');
-                            }
-                        } else {
-                            biWeekDay = parseInt(day);
-                            if (biWeekDay < 0 || biWeekDay > 6) {
-                                throw new Error('Invalid day number');
-                            }
-                        }
+                    if (!day || !DAYS_OF_WEEK.hasOwnProperty(day)) {
+                        throw new Error('Please specify a valid day of the week');
                     }
-                    rule = `0 ${minutes} ${hours} */14 * ${biWeekDay}`;
+                    rule = new schedule.RecurrenceRule();
+                    rule.dayOfWeek = DAYS_OF_WEEK[day];
+                    rule.hour = hours;
+                    rule.minute = minutes;
+                    rule.dayOfWeek = DAYS_OF_WEEK[day];
+                    scheduleInfo = `every other ${day} at ${time}`;
+                    // Set date to start from next occurrence
+                    const today = new Date();
+                    rule.date = today.getDate() + ((7 - today.getDay() + DAYS_OF_WEEK[day]) % 7);
                     break;
 
                 case 'monthly':
-                    const monthDay = day ? parseInt(day) : 1;
-                    if (isNaN(monthDay) || monthDay < 1 || monthDay > 31) {
-                        throw new Error('Invalid day of month');
+                    const monthDay = parseInt(day);
+                    if (!day || isNaN(monthDay) || monthDay < 1 || monthDay > 31) {
+                        throw new Error('Please specify a valid day of the month (1-31)');
                     }
-                    rule = `0 ${minutes} ${hours} ${monthDay} * *`;
+                    rule = new schedule.RecurrenceRule();
+                    rule.date = monthDay;
+                    rule.hour = hours;
+                    rule.minute = minutes;
+                    scheduleInfo = `monthly on day ${monthDay} at ${time}`;
                     break;
 
                 case 'custom':
-                    if (!day) {
-                        throw new Error('Custom schedule requires a cron expression');
+                    if (!cron) {
+                        throw new Error('Please provide a cron expression for custom schedules');
                     }
-                    rule = day;
+                    try {
+                        rule = cron;
+                        const testJob = schedule.scheduleJob(rule, () => {});
+                        if (!testJob) throw new Error('Invalid cron expression');
+                        testJob.cancel();
+                        scheduleInfo = `custom schedule (${cron})`;
+                    } catch (error) {
+                        throw new Error('Invalid cron expression. Please check the format.');
+                    }
                     break;
+
+                default:
+                    throw new Error('Invalid schedule type');
             }
 
-            // Create the message sending function
-            const sendAnnouncement = async () => {
+            // Create the job
+            const job = schedule.scheduleJob(rule, async () => {
                 try {
+                    const channel = await interaction.client.channels.fetch(interaction.channelId);
                     const embed = new EmbedBuilder()
                         .setTitle(title)
-                        .setDescription(content)
-                        .setColor(color)
+                        .setDescription(message)
+                        .setColor('#5865F2')
                         .setTimestamp();
 
-                    if (image) {
-                        embed.setImage(image);
-                    }
-
-                    if (footer) {
-                        embed.setFooter({ text: footer });
-                    }
-
-                    let components = [];
-                    if (buttonLabel && buttonUrl) {
-                        const button = new ButtonBuilder()
-                            .setLabel(buttonLabel)
-                            .setStyle(ButtonStyle.Link)
-                            .setURL(buttonUrl);
-
-                        const row = new ActionRowBuilder()
-                            .addComponents(button);
-
-                        components.push(row);
-                    }
-
-                    const channel = await interaction.client.channels.fetch(interaction.channelId);
                     await channel.send({
-                        content: `${role}`,
-                        embeds: [embed],
-                        components: components
+                        content: `${mention}`,
+                        embeds: [embed]
                     });
 
-                    logger.info(`Sent scheduled announcement`, 'ScheduleAnnouncement', {
-                        channel: channel.name,
-                        role: role.name,
-                        title: title
-                    });
+                    if (type === 'one-time') {
+                        global.scheduledJobs.delete(jobId);
+                        global.saveSchedulesToFile();
+                    }
                 } catch (error) {
-                    logger.error(`Failed to send announcement`, 'ScheduleAnnouncement', error);
+                    logger.error('Failed to send announcement', 'Schedule', error);
                 }
-            };
+            });
 
-            // Schedule the job
-            const job = schedule.scheduleJob(rule, sendAnnouncement);
-            if (!job) {
-                throw new Error('Invalid schedule pattern');
-            }
+            if (!job) throw new Error('Failed to create schedule');
 
             // Store the job
-            const jobId = `${interaction.guildId}-announcement-${Date.now()}`;
+            const jobId = `${interaction.guildId}-${Date.now()}`;
             global.scheduledJobs.set(jobId, {
                 job,
                 type,
-                role: role.id,
+                mentionType,
+                mentionId: mentionType === 'role' ? role.id : user.id,
                 title,
-                content,
-                color,
-                image,
-                footer,
+                message,
                 time,
                 day,
-                frequency,
-                buttonLabel,
-                buttonUrl,
-                channelId: interaction.channelId,
-                rule
+                date,
+                timestamp,
+                channelId: interaction.channelId
             });
 
             global.saveSchedulesToFile();
-            logger.info(`Created new announcement schedule: ${jobId}`, 'ScheduleAnnouncement');
 
-            // Send preview
-            const previewEmbed = new EmbedBuilder()
-                .setTitle('📢 Announcement Schedule Created')
-                .setColor('#00FF00')
-                .setDescription('Your scheduled announcement has been created. Here\'s how it will look:')
-                .addFields(
-                    { name: 'Schedule Type', value: type, inline: true },
-                    { name: 'Time', value: time, inline: true },
-                    { name: 'Role', value: role.name, inline: true },
-                    { name: 'Rule', value: `\`${rule}\``, inline: false }
-                );
-
-            const messagePreviewEmbed = new EmbedBuilder()
-                .setTitle(title)
-                .setDescription(content)
-                .setColor(color)
-                .setTimestamp();
-
-            if (image) {
-                messagePreviewEmbed.setImage(image);
-            }
-
-            if (footer) {
-                messagePreviewEmbed.setFooter({ text: footer });
-            }
-
-            let previewComponents = [];
-            if (buttonLabel && buttonUrl) {
-                const previewButton = new ButtonBuilder()
-                    .setLabel(buttonLabel)
-                    .setStyle(ButtonStyle.Link)
-                    .setURL(buttonUrl);
-
-                const previewRow = new ActionRowBuilder()
-                    .addComponents(previewButton);
-
-                previewComponents.push(previewRow);
-            }
+            // Create response message
+            const nextRun = job.nextInvocation();
+            const nextRunInfo = `<t:${Math.floor(nextRun.getTime()/1000)}:R>`;
 
             await interaction.reply({
-                content: `Preview of scheduled announcement for ${role}:`,
-                embeds: [previewEmbed, messagePreviewEmbed],
-                components: previewComponents,
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle(' Announcement Scheduled')
+                        .setDescription(`Your announcement has been scheduled!\n\nSchedule: ${scheduleInfo}\nNext run: ${nextRunInfo}\nPinging: ${mention}`)
+                        .setColor('#00FF00')
+                ],
                 ephemeral: true
             });
-
         } catch (error) {
-            logger.error(`Failed to create announcement schedule`, 'ScheduleAnnouncement', error);
-            const errorMessage = {
-                'Invalid daily frequency': 'Please provide a positive number for daily frequency.',
-                'Invalid day name': 'Please use valid day names (e.g., Monday, Tuesday) or numbers (0-6).',
-                'Invalid day number': 'Please use numbers 0-6 for days (0 = Sunday, 6 = Saturday).',
-                'Invalid day of month': 'Please use numbers 1-31 for monthly schedules.',
-                'Custom schedule requires a cron expression': 'Please provide a valid cron expression for custom schedules.',
-                'Invalid schedule pattern': 'The provided schedule pattern is invalid.'
-            }[error.message] || 'Failed to create schedule! Please check the command parameters and try again.';
-
             await interaction.reply({ 
-                content: errorMessage,
+                content: error.message || 'Failed to create schedule',
                 ephemeral: true 
             });
         }
