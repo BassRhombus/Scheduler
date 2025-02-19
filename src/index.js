@@ -1,25 +1,27 @@
 require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
-const { Client, Collection, Events, GatewayIntentBits } = require('discord.js');
+const { Client, Collection, Events, GatewayIntentBits, ActivityType } = require('discord.js');
 const { loadSchedulesFromFile, saveSchedulesToFile } = require('./utils/persistence');
 const logger = require('../logger');
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildBans
+    ] 
+});
 
-// Initialize commands collection
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
-// Load commands
 for (const file of commandFiles) {
     const filePath = path.join(commandsPath, file);
     const command = require(filePath);
     if ('data' in command && 'execute' in command) {
         client.commands.set(command.data.name, command);
-    } else {
-        logger.warn(`The command at ${filePath} is missing required properties`, 'Startup');
     }
 }
 
@@ -27,18 +29,34 @@ for (const file of commandFiles) {
 global.scheduledJobs = new Map();
 global.saveSchedulesToFile = () => saveSchedulesToFile(global.scheduledJobs);
 
-// Client ready event
 client.once(Events.ClientReady, async () => {
     try {
         await loadSchedulesFromFile(client, global.scheduledJobs);
         console.log('Bot is Ready!');
         logger.info(`Ready! Logged in as ${client.user.tag}`, 'Startup');
+        
+        // Set bot status to show server count
+        updatePresence(client);
     } catch (error) {
         logger.error('Error during startup', 'Startup', error);
     }
 });
 
-// Interaction handling
+// Update bot's status when joining/leaving servers
+client.on(Events.GuildCreate, () => updatePresence(client));
+client.on(Events.GuildDelete, () => updatePresence(client));
+
+function updatePresence(client) {
+    const serverCount = client.guilds.cache.size;
+    client.user.setPresence({
+        activities: [{ 
+            name: `in ${serverCount} servers`, 
+            type: ActivityType.Playing 
+        }],
+        status: 'online'
+    });
+}
+
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -48,7 +66,8 @@ client.on(Events.InteractionCreate, async interaction => {
     try {
         logger.info(`Executing command: ${interaction.commandName}`, 'Command', {
             user: interaction.user.username,
-            guild: interaction.guild.name
+            guild: interaction.guild.name,
+            guildId: interaction.guild.id
         });
         await command.execute(interaction);
     } catch (error) {
@@ -71,5 +90,4 @@ process.on('uncaughtException', error => {
     logger.error('Uncaught exception:', 'Process', error);
 });
 
-// Login
 client.login(process.env.DISCORD_TOKEN);
