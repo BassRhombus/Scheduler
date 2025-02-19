@@ -1,0 +1,5 @@
+node_modules/
+.env
+schedules.json
+help.txt
+*.log
