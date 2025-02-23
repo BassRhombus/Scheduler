@@ -17,7 +17,7 @@ module.exports = {
         const schedules = Array.from(global.scheduledJobs.entries())
             .filter(([jobId]) => jobId.startsWith(interaction.guildId));
 
-        // Create choices from schedules
+        // Create choices from schedules (not working yet)
         const choices = schedules.map(([id, schedule]) => ({
             name: `${schedule.title} (${schedule.time})`,
             value: id
@@ -53,15 +53,15 @@ module.exports = {
                 return;
             }
 
-            // Cancel the scheduled job
+            
             if (schedule.job && typeof schedule.job.cancel === 'function') {
                 schedule.job.cancel();
             }
 
-            // Delete from the Map
+            
             global.scheduledJobs.delete(scheduleId);
 
-            // Save updated schedules to file
+           
             global.saveSchedulesToFile();
 
             logger.info(`Successfully deleted schedule: ${scheduleId}`, 'Delete', {
