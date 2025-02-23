@@ -1,5 +1,6 @@
 const fs = require('fs');
 const schedule = require('node-schedule');
+const { EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
 const logger = require('../../logger');
 
 function saveSchedulesToFile(scheduledJobs) {
@@ -42,7 +43,7 @@ async function loadSchedulesFromFile(client, scheduledJobs) {
         const data = JSON.parse(fs.readFileSync('schedules.json'));
         logger.info(`Loading ${data.length} schedules from file`, 'Persistence');
 
-        
+        // Cancel existing jobs
         for (const [id, schedule] of scheduledJobs.entries()) {
             if (schedule.job && typeof schedule.job.cancel === 'function') {
                 schedule.job.cancel();
@@ -52,9 +53,34 @@ async function loadSchedulesFromFile(client, scheduledJobs) {
 
         for (const scheduleData of data) {
             try {
-                const { id, rule } = scheduleData;
+                const { id, rule, type, time, day } = scheduleData;
 
-                
+                // Create the proper rule based on schedule type
+                let scheduleRule;
+                if (rule && rule.type === 'cron') {
+                    scheduleRule = rule.value;
+                } else {
+                    // Fallback to creating rule from type, time, and day
+                    const [hours, minutes] = time.split(':').map(Number);
+                    
+                    switch (type) {
+                        case 'daily':
+                            scheduleRule = `0 ${minutes} ${hours} * * *`;
+                            break;
+                        case 'weekly':
+                            scheduleRule = `0 ${minutes} ${hours} * * ${day}`;
+                            break;
+                        default:
+                            throw new Error(`Unknown schedule type: ${type}`);
+                    }
+                }
+
+                logger.info(`Creating schedule with rule: ${scheduleRule}`, 'Persistence', {
+                    id,
+                    type,
+                    originalRule: rule
+                });
+
                 const sendMessage = async () => {
                     try {
                         const channel = await client.channels.fetch(scheduleData.channelId);
@@ -63,7 +89,6 @@ async function loadSchedulesFromFile(client, scheduledJobs) {
                         }
 
                         if (scheduleData.isAnnouncement) {
-                            // Handle announcement-type message
                             const embed = new EmbedBuilder()
                                 .setTitle(scheduleData.title)
                                 .setDescription(scheduleData.content)
@@ -90,7 +115,6 @@ async function loadSchedulesFromFile(client, scheduledJobs) {
                                 components: components.length > 0 ? components : undefined
                             });
                         } else {
-                            // Handle simple message
                             await channel.send(`<@&${scheduleData.roleId}> ${scheduleData.message}`);
                         }
 
@@ -100,16 +124,15 @@ async function loadSchedulesFromFile(client, scheduledJobs) {
                     }
                 };
 
-                
-                const testJob = schedule.scheduleJob(rule, () => {});
+                // Validate the rule before creating the actual job
+                const testJob = schedule.scheduleJob(scheduleRule, () => {});
                 if (!testJob) {
-                    throw new Error(`Invalid schedule rule: ${rule}`);
+                    throw new Error(`Invalid schedule rule: ${scheduleRule}`);
                 }
                 testJob.cancel();
 
-                
-                const job = schedule.scheduleJob(rule, sendMessage);
-                
+                // Create the actual job
+                const job = schedule.scheduleJob(scheduleRule, sendMessage);
                 
                 scheduledJobs.set(id, {
                     ...scheduleData,
@@ -119,6 +142,7 @@ async function loadSchedulesFromFile(client, scheduledJobs) {
 
                 logger.info(`Successfully loaded schedule: ${id}`, 'Persistence', {
                     type: scheduleData.type,
+                    rule: scheduleRule,
                     nextRun: job.nextInvocation()
                 });
             } catch (error) {
@@ -129,7 +153,6 @@ async function loadSchedulesFromFile(client, scheduledJobs) {
         logger.error('Failed to load schedules from file', 'Persistence', error);
     }
 }
-
 
 module.exports = {
     saveSchedulesToFile,

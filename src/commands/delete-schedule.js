@@ -1,15 +1,16 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const logger = require('../../logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('delete-schedule')
         .setDescription('Delete a scheduled announcement')
-        .addStringOption(option => 
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+        .addStringOption(option =>
             option.setName('id')
                 .setDescription('The ID of the schedule to delete')
                 .setRequired(true)
-                .setAutocomplete(true)), 
+                .setAutocomplete(true)),
 
     async autocomplete(interaction) {
         // Get all schedules for this guild
@@ -23,7 +24,7 @@ module.exports = {
         }));
 
         const focused = interaction.options.getFocused();
-        const filtered = choices.filter(choice => 
+        const filtered = choices.filter(choice =>
             choice.name.toLowerCase().includes(focused.toLowerCase()));
 
         await interaction.respond(
@@ -35,7 +36,6 @@ module.exports = {
         try {
             const scheduleId = interaction.options.getString('id');
 
-            
             if (!scheduleId.startsWith(interaction.guildId)) {
                 return await interaction.reply({
                     content: 'This schedule ID is not valid for this server.',
@@ -45,22 +45,29 @@ module.exports = {
 
             const schedule = global.scheduledJobs.get(scheduleId);
             if (!schedule) {
-                return await interaction.reply({
-                    content: 'Schedule not found. Use /list-schedules to see all valid IDs.',
+                logger.warn(`Attempted to delete non-existent schedule: ${scheduleId}`, 'Delete');
+                await interaction.reply({
+                    content: `No schedule found with ID: ${scheduleId}`,
                     ephemeral: true
                 });
+                return;
             }
 
-            // Cancel the scheduled thing
-            if (schedule.job) {
+            // Cancel the scheduled job
+            if (schedule.job && typeof schedule.job.cancel === 'function') {
                 schedule.job.cancel();
             }
 
-            
+            // Delete from the Map
             global.scheduledJobs.delete(scheduleId);
 
-            // Save changes to the json file
+            // Save updated schedules to file
             global.saveSchedulesToFile();
+
+            logger.info(`Successfully deleted schedule: ${scheduleId}`, 'Delete', {
+                type: schedule.type,
+                channelId: schedule.channelId
+            });
 
             const embed = new EmbedBuilder()
                 .setTitle('✅ Schedule Deleted')
@@ -72,12 +79,10 @@ module.exports = {
                 ephemeral: true
             });
 
-            logger.info(`Deleted schedule ${scheduleId}`, 'DeleteSchedule');
-
         } catch (error) {
-            logger.error('Failed to delete schedule', 'DeleteSchedule', error);
+            logger.error(`Error deleting schedule: ${scheduleId}`, 'Delete', error);
             await interaction.reply({
-                content: 'Failed to delete schedule. Please try again.',
+                content: `Failed to delete schedule: ${error.message}`,
                 ephemeral: true
             });
         }
