@@ -10,7 +10,6 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildBans
     ] 
 });
 
@@ -26,7 +25,7 @@ for (const file of commandFiles) {
     }
 }
 
-// Initialize global schedules Map
+
 global.scheduledJobs = new Map();
 global.saveSchedulesToFile = () => saveSchedulesToFile(global.scheduledJobs);
 
@@ -36,14 +35,14 @@ client.once(Events.ClientReady, async () => {
         console.log('Bot is Ready!');
         logger.info(`Ready! Logged in as ${client.user.tag}`, 'Startup');
         
-        // Set bot status to show server count
+        // Set bot status to show server count (can change to whatever)
         updatePresence(client);
     } catch (error) {
         logger.error('Error during startup', 'Startup', error);
     }
 });
 
-// Update bot's status when joining/leaving servers
+
 client.on(Events.GuildCreate, () => updatePresence(client));
 client.on(Events.GuildDelete, () => updatePresence(client));
 
@@ -65,7 +64,7 @@ client.on(Events.InteractionCreate, async interaction => {
     if (!command) return;
 
     try {
-        // Check permissions unless user is owner
+    
         if (!canManageSchedules(interaction)) {
             await interaction.reply({
                 content: 'You do not have permission to use this command.',

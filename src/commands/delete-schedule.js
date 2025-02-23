@@ -9,7 +9,7 @@ module.exports = {
             option.setName('id')
                 .setDescription('The ID of the schedule to delete')
                 .setRequired(true)
-                .setAutocomplete(true)), // Add autocomplete for easier ID selection
+                .setAutocomplete(true)), 
 
     async autocomplete(interaction) {
         // Get all schedules for this guild
@@ -27,7 +27,7 @@ module.exports = {
             choice.name.toLowerCase().includes(focused.toLowerCase()));
 
         await interaction.respond(
-            filtered.slice(0, 25) // Discord has a 25-choice limit
+            filtered.slice(0, 25) // Discord has a 25-choice limit for some reason
         );
     },
 
@@ -35,7 +35,7 @@ module.exports = {
         try {
             const scheduleId = interaction.options.getString('id');
 
-            // Check if schedule exists and belongs to this guild
+            
             if (!scheduleId.startsWith(interaction.guildId)) {
                 return await interaction.reply({
                     content: 'This schedule ID is not valid for this server.',
@@ -51,15 +51,15 @@ module.exports = {
                 });
             }
 
-            // Cancel the scheduled job
+            // Cancel the scheduled thing
             if (schedule.job) {
                 schedule.job.cancel();
             }
 
-            // Remove from our Map
+            
             global.scheduledJobs.delete(scheduleId);
 
-            // Save changes to file
+            // Save changes to the json file
             global.saveSchedulesToFile();
 
             const embed = new EmbedBuilder()

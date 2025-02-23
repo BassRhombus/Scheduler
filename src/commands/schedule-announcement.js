@@ -21,7 +21,7 @@ module.exports = {
         .setName('schedule-announcement')
         .setDescription('Schedule an announcement')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)  // Default permission requirement
-        // Required options first
+        // Required options first or youll get a stupid error
         .addStringOption(option =>
             option.setName('type')
                 .setDescription('When to send this announcement')
@@ -54,7 +54,7 @@ module.exports = {
             option.setName('time')
                 .setDescription('Time (HH:MM in 24h format)')
                 .setRequired(true))
-        // Non-required options after
+        // Non-required options after. refer to last stupid comment
         .addRoleOption(option =>
             option.setName('role')
                 .setDescription('Role to ping')
@@ -89,7 +89,7 @@ module.exports = {
             const day = interaction.options.getString('day')?.toLowerCase();
             const cron = interaction.options.getString('cron');
 
-            // Validate time format
+            
             if (!/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
                 return await interaction.reply({ 
                     content: 'Please use HH:MM format (e.g., 15:30)',
@@ -97,7 +97,7 @@ module.exports = {
                 });
             }
 
-            // Validate mention options
+           
             if (mentionType === 'role' && !role) {
                 throw new Error('Please select a role to ping');
             }
@@ -105,7 +105,7 @@ module.exports = {
                 throw new Error('Please select a user to ping');
             }
 
-            // Get the mention string
+            
             const mention = mentionType === 'role' ? role : user;
 
             const [hours, minutes] = time.split(':').map(Number);
@@ -113,7 +113,7 @@ module.exports = {
             let timestamp;
             let scheduleInfo;
 
-            // Validate and create schedule based on type
+           
             switch(type) {
                 case 'one-time':
                     if (!date || !/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])-(\d{2})$/.test(date)) {
@@ -161,7 +161,7 @@ module.exports = {
                     rule.minute = minutes;
                     rule.dayOfWeek = DAYS_OF_WEEK[day];
                     scheduleInfo = `every other ${day} at ${time}`;
-                    // Set date to start from next occurrence
+                    
                     const today = new Date();
                     rule.date = today.getDate() + ((7 - today.getDay() + DAYS_OF_WEEK[day]) % 7);
                     break;
@@ -197,7 +197,7 @@ module.exports = {
                     throw new Error('Invalid schedule type');
             }
 
-            // Create the job
+            // Create the thing (job)
             const job = schedule.scheduleJob(rule, async () => {
                 try {
                     const channel = await interaction.client.channels.fetch(interaction.channelId);
@@ -241,7 +241,7 @@ module.exports = {
 
             global.saveSchedulesToFile();
 
-            // Create response message
+            // Create response
             const nextRun = job.nextInvocation();
             const nextRunInfo = `<t:${Math.floor(nextRun.getTime()/1000)}:R>`;
 

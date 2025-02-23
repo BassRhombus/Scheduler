@@ -29,7 +29,7 @@ module.exports = {
                 })));
 
             const schedulePromises = schedules.map(async ([id, schedule]) => {
-                // Time information
+               
                 let timeInfo;
                 if (schedule.type === 'one-time') {
                     timeInfo = `<t:${Math.floor(schedule.timestamp/1000)}:F>`;
@@ -42,16 +42,15 @@ module.exports = {
                 const nextRun = schedule.job.nextInvocation();
                 const nextRunTimestamp = `<t:${Math.floor(nextRun.getTime()/1000)}:R>`;
 
-                // Mention handling
+                
                 let mentionString;
                 try {
-                    // For schedules created with the /schedule command
                     if (schedule.role) {
                         const role = await interaction.guild.roles.fetch(schedule.role);
                         logger.debug('Found role:', 'ListSchedules', { roleId: schedule.role, roleName: role?.name });
                         mentionString = role ? `@${role.name}` : 'Unknown Role';
                     }
-                    // For schedules created with the /schedule-announcement command
+                    
                     else if (schedule.mentionType && schedule.mentionId) {
                         if (schedule.mentionType === 'role') {
                             const role = await interaction.guild.roles.fetch(schedule.mentionId);

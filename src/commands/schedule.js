@@ -129,7 +129,7 @@ module.exports = {
                             }
                         }
                     } else {
-                        day = 1; // Default to Monday
+                        day = 1; 
                     }
                     rule = `0 ${minutes} ${hours} */14 * ${day}`;
                     break;
@@ -143,26 +143,26 @@ module.exports = {
                     break;
 
                 case 'custom':
-                    // Validate custom cron expression
+                    
                     if (day) {
-                        // Check if it's a valid cron expression
+                        // Check if it's a valid cron express
                         const cronParts = day.split(' ');
                         if (cronParts.length !== 5 && cronParts.length !== 6) {
                             throw new Error('Invalid cron expression format');
                         }
                         rule = cronParts.length === 5 ? `0 ${day}` : day;
                     } else {
-                        rule = `0 ${minutes} ${hours} * * 1`; // Default to every Monday
+                        rule = `0 ${minutes} ${hours} * * 1`; 
                     }
                     break;
             }
 
-            // Test if the rule is valid
+            
             const testJob = schedule.scheduleJob(rule, () => {});
             if (!testJob) {
                 throw new Error('Invalid schedule pattern');
             }
-            testJob.cancel(); // Clean up test job
+            testJob.cancel(); 
 
             const job = schedule.scheduleJob(rule, function() {
                 interaction.channel.send(`${role} ${message}`);
@@ -184,13 +184,13 @@ module.exports = {
                 day,
                 frequency,
                 channelId: interaction.channelId,
-                rule // Store the actual rule for reference
+                rule 
             });
 
             global.saveSchedulesToFile();
             logger.info(`Created new schedule: ${jobId}`, 'Schedule');
 
-            // Create a more detailed success message
+          
             const scheduleDetails = [
                 `Successfully scheduled notification for ${role}`,
                 `Type: ${type}`,
